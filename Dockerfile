@@ -1,27 +1,22 @@
-FROM debian:bookworm-slim
+# Sử dụng Alpine Linux cho nhẹ, hoặc đổi thành "ubuntu:latest" nếu bạn quen dùng apt-get
+FROM alpine:latest
 
-# Cài đặt các công cụ hệ thống bắt buộc (bổ sung thêm 'procps' và 'gzip' để script code-server chạy được)
-RUN apt update && apt install -y \
+# Cài đặt các công cụ cơ bản và các thư viện cần thiết cho việc cài đặt sau này
+RUN apk update && apk add --no-cache \
     curl \
-    wget \
-    sudo \
+    bash \
     git \
-    build-essential \
-    procps \
-    gzip \
-    && rm -rf /var/lib/apt/lists/*
+    nano \
+    build-base
 
-# Đổi mật khẩu của tài khoản root trong Linux thành "root"
-RUN echo 'root:root' | chpasswd
+# Tải và cài đặt sshx client
+RUN curl -sSf https://sshx.io/get | sh
 
-# Tải và cài đặt chính xác script của Code-Server
-RUN curl -fsSL https://code-server.dev | sh
+# Thiết lập thư mục làm việc tại ngôi nhà của root
+WORKDIR /root
 
-# Tạo thư mục lưu cấu hình dự án
-RUN mkdir -p /root/.config/code-server
+# Thiết lập biến môi trường mặc định là bash shell
+ENV SHELL=/bin/bash
 
-# Mở cổng mạng theo tiêu chuẩn Render
-EXPOSE 10000
-
-# Khởi chạy code-server trên cổng 10000 và sử dụng biến PASSWORD làm mật khẩu đăng nhập web
-CMD ["code-server", "--bind-addr", "0.0.0.0:10000", "--auth", "password"]
+# Khởi chạy Bash Shell trước, bạn thích bật sshx lúc nào thì gõ lệnh `sshx` lúc đó
+CMD ["/bin/bash"]
