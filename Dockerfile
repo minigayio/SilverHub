@@ -22,19 +22,11 @@ RUN curl -sSf https://sshx.io/get | sh
 
 WORKDIR /root
 
-# Khai báo biến môi trường mặc định là bash shell
+# Khai báo biến môi trường sử dụng Bash làm mặc định
 ENV SHELL=/bin/bash
 
 # Mở cổng mặc định 8080 cho Render
 EXPOSE 8080
 
-# 4. Khởi chạy hệ thống:
-# - Tạo một file script nhỏ để khởi động sshx và ghi lại cổng local mà sshx mở ra
-# - Dùng websockify để bắt cổng $PORT của Render và forward dữ liệu trực tiếp vào sshx
-CMD ["sh", "-c", "\
-    sshx --listening-port 8181 & \
-    sleep 3 && \
-    python3 /opt/websockify/run ${PORT:-8080} 127.0.0.1:8181 & \
-    while true; do sleep 3600; done \
-    "]
-    
+# 4. Khởi chạy hệ thống (Sửa lại cú pháp dạng chuỗi đơn giản để không bị lỗi ký tự)
+CMD sshx --listening-port 8181 & sleep 3 && python3 /opt/websockify/run ${PORT:-8080} 127.0.0.1:8181 & while true; do sleep 3600; done
