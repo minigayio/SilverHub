@@ -1,33 +1,28 @@
 FROM ubuntu:22.04
 
+# Thiết lập môi trường không tương tác
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Cài đặt curl và các thư viện cần thiết
+# Cài đặt curl để lấy link sshx và python3 để tạo cổng giữ ping cho Render
 RUN apt-get update && apt-get install -y \
     curl \
+    python3 \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Tải trực tiếp bản binary sshx chính thức
-RUN curl -sSLO https://github.com/ekzhang/sshx/releases/latest/download/sshx-linux-amd64.tar.gz \
-    && tar -xzf sshx-linux-amd64.tar.gz \
-    && mv sshx /usr/local/bin/ \
-    && rm sshx-linux-amd64.tar.gz
-
 WORKDIR /root
 
-# Viết script khởi động: Chạy sshx dưới dạng Server lắng nghe ở port của Render
-RUN echo '#!/bin/bash\n\
-# Render cấp port nào thì sshx server sẽ chạy ở port đó\n\
-echo "Starting self-hosted sshx server on port $PORT..."\n\
-\n\
-# Khởi động sshx server. Vì Render xử lý SSL (https) ở lớp ngoài rồi, \n\
-# nên ở trong container mình chỉ cần chạy giao thức http thường.\n\
-sshx server --port $PORT\n\
-' > /start.sh
-
-RUN chmod +x /start.sh
-
+# Đảm bảo chạy bằng quyền root
 USER root
 
-CMD ["/bin/bash", "/start.sh"]
+# Lệnh CMD này thực hiện 3 việc trực tiếp khi container KHỞI ĐỘNG (Runtime):
+# 1. Bật web server fake ở port Render cấp để tránh lỗi "Port timeout" / ngủm sau 15p
+# 2. Tải trực tiếp sshx từ trang chủ sshx.io bằng lệnh chính thức (Lúc này mạng Render đã mở)
+# 3. Chạy sshx server liên tục trên Port đó
+CMD echo "OK" > index.html && \
+    python3 -m http.server $PORT & \
+    echo "Downloading sshx from official site..." && \
+    curl -sSf https://sshx.io/install.sh | sh && \
+    echo "Starting self-hosted sshx server on port $PORT..." && \
+    export SHELL=/bin/bash && \
+    /root/.sshx/bin/sshx server --port $PORT
