@@ -1,54 +1,40 @@
-# Sử dụng bản Ubuntu mới nhất
-FROM ubuntu:latest
+FROM alpine:latest
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV HOME=/root
-ENV DISPLAY=:1
+# Cài đặt OpenSSH, bash và shadow (để dùng lệnh useradd/chsh)
+RUN apk update && apk add --no-cache openssh bash shadow
 
-# 1. Cập nhật hệ thống và cài đặt các công cụ cơ bản + SUPERVISOR để chống sập
-RUN apt-get update && apt-get install -y \
-    curl bash ca-certificates git nano net-tools xvfb x11vnc openbox supervisor \
-    && rm -rf /var/lib/apt/lists/*
+# Tạo SSH host keys tự động
+RUN ssh-keygen -A
 
-# 2. Tải và cài đặt noVNC + websockify
-RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC && \
-    git clone https://github.com/novnc/websockify /opt/noVNC/utils/websockify && \
-    ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+# Cấu hình SSH để cho phép đăng nhập bằng mật khẩu
+RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# 3. Tải và cài đặt sshx client bằng quyền root
-RUN curl -sSf https://sshx.io/get | sh
+# Mở cổng 22 bên trong container
+EXPOSE 22
 
-WORKDIR /root
-
-# 4. Tạo file cấu hình cho Supervisor để quản lý, giữ các tiến trình luôn SỐNG
-RUN echo '[supervisord]\n\
-nodaemon=true\n\
-user=root\n\
+# Script khởi chạy: Tự động tạo user từ Biến Môi Trường khi Render boot container
+RUN echo '#!/bin/bash \n\
+USER_NAME=${SSH_USER:-admin} \n\
+USER_PASS=${SSH_PASSWORD:-Password123} \n\
 \n\
-[program:xvfb]\n\
-command=Xvfb :1 -screen 0 1280x720x24\n\
-autorestart=true\n\
+# Tạo user nếu chưa tồn tại \n\
+if ! id "$USER_NAME" &>/dev/null; then \n\
+    useradd -m -s /bin/bash "$USER_NAME" \n\
+fi \n\
 \n\
-[program:openbox]\n\
-command=openbox-session\n\
-autorestart=true\n\
+# Cập nhật mật khẩu \n\
+echo "$USER_NAME:$USER_PASS" | chpasswd \n\
 \n\
-[program:x11vnc]\n\
-command=x11vnc -display :1 -nopw -forever -shared -rfbport 5900\n\
-autorestart=true\n\
+# Tạo thư mục chứa file và phân quyền \n\
+mkdir -p /home/"$USER_NAME"/upload \n\
+chown -R "$USER_NAME":"$USER_NAME" /home/"$USER_NAME" \n\
 \n\
-[program:sshx]\n\
-command=sshx\n\
-autorestart=true\n\
-stdout_logfile=/dev/stdout\n\
-stdout_logfile_maxbytes=0\n\
+echo "=== SSH/SFTP Server Started ===" \n\
+echo "User: $USER_NAME" \n\
 \n\
-[program:novnc]\n\
-command=/opt/noVNC/utils/novnc_proxy --vnc localhost:5900 --listen %(environ(PORT))s\n\
-autorestart=true\n' > /etc/supervisor/conf.d/supervisord.conf
+exec /usr/sbin/sshd -D' > /entrypoint.sh
 
-# Render sẽ tự cấp cổng PORT ngẫu nhiên
-EXPOSE 8080
+RUN chmod +x /entrypoint.sh
 
-# 5. Khởi chạy thông qua tập lệnh dọn dẹp lock cũ và gọi Supervisor
-CMD ["sh", "-c", "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 && exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
