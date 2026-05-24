@@ -1,37 +1,33 @@
 FROM ubuntu:22.04
 
-# Tránh các câu hỏi tương tác khi cài đặt gói
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Cài đặt curl, python3, bash và ca-certificates (để không bị lỗi chứng chỉ SSL khi tải)
+# Cài đặt curl và các thư viện cần thiết
 RUN apt-get update && apt-get install -y \
     curl \
-    python3 \
     bash \
-    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Tải và cài đặt sshx.io bằng bash công thức chuẩn
-RUN curl -sSf https://sshx.io/install.sh | bash
+# Tải trực tiếp bản binary sshx chính thức
+RUN curl -sSLO https://github.com/ekzhang/sshx/releases/latest/download/sshx-linux-amd64.tar.gz \
+    && tar -xzf sshx-linux-amd64.tar.gz \
+    && mv sshx /usr/local/bin/ \
+    && rm sshx-linux-amd64.tar.gz
 
 WORKDIR /root
 
-# Viết script khởi động tạo web server fake và chạy sshx
+# Viết script khởi động: Chạy sshx dưới dạng Server lắng nghe ở port của Render
 RUN echo '#!/bin/bash\n\
-# 1. Chạy web server fake ở port do Render cấp để pass qua vòng kiểm tra của Render\n\
-echo "Starting health check server on port $PORT..."\n\
-echo "OK" > index.html\n\
-python3 -m http.server $PORT &\n\
+# Render cấp port nào thì sshx server sẽ chạy ở port đó\n\
+echo "Starting self-hosted sshx server on port $PORT..."\n\
 \n\
-# 2. Chạy sshx dưới quyền root\n\
-echo "Starting sshx as root..."\n\
-export SHELL=/bin/bash\n\
-sshx\n\
+# Khởi động sshx server. Vì Render xử lý SSL (https) ở lớp ngoài rồi, \n\
+# nên ở trong container mình chỉ cần chạy giao thức http thường.\n\
+sshx server --port $PORT\n\
 ' > /start.sh
 
 RUN chmod +x /start.sh
 
-# Đảm bảo sử dụng quyền root
 USER root
 
 CMD ["/bin/bash", "/start.sh"]
